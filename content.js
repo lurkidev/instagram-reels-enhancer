@@ -59,6 +59,7 @@
     seekStep: 5,
     smoothWheel: true,
     autoAdvance: false,
+    backgroundPlayback: true,
     adBlock: true,
     forceH264: true,
     loadingNotices: true,
@@ -312,6 +313,137 @@
     raf: 0,
     scanTimer: 0,
   };
+
+  // Keep the currently playing Reel alive while the document is backgrounded.
+  // This only prevents page-initiated pause() calls for the active Reel that was
+  // already playing when the tab became hidden. It does not start new playback.
+  const backgroundPlaybackState = {
+    hidden: false,
+    protectedVideos: new Set(),
+    hiddenDescriptor: Object.getOwnPropertyDescriptor(Document.prototype, 'hidden'),
+    visibilityDescriptor: Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState'),
+    nativePause: HTMLMediaElement.prototype.pause,
+    nativePlay: HTMLMediaElement.prototype.play,
+  };
+
+  function actualDocumentIsHidden() {
+    try {
+      if (backgroundPlaybackState.visibilityDescriptor?.get) {
+        return backgroundPlaybackState.visibilityDescriptor.get.call(document) === 'hidden';
+      }
+      if (backgroundPlaybackState.hiddenDescriptor?.get) {
+        return !!backgroundPlaybackState.hiddenDescriptor.get.call(document);
+      }
+    } catch (_) { }
+    return false;
+  }
+
+  function backgroundPlaybackEnabled() {
+    return SET.enabled && SET.backgroundPlayback && isReels();
+  }
+
+  function protectCurrentReelPlayback() {
+    if (!backgroundPlaybackEnabled()) return;
+    let video = S.video?.isConnected ? S.video : null;
+    if (!video || video.paused || video.ended) {
+      try { video = chooseActive(); } catch (_) { video = null; }
+    }
+    if (video && video.isConnected && !video.paused && !video.ended && !isAdItem(video)) {
+      backgroundPlaybackState.protectedVideos.add(video);
+    }
+  }
+
+  function releaseBackgroundPlayback({ pause = false, resume = false } = {}) {
+    const videos = [...backgroundPlaybackState.protectedVideos];
+    backgroundPlaybackState.protectedVideos.clear();
+
+    if (pause) {
+      for (const video of videos) {
+        try { backgroundPlaybackState.nativePause.call(video); } catch (_) { }
+      }
+      return;
+    }
+
+    if (resume && backgroundPlaybackEnabled()) {
+      for (const video of videos) {
+        if (!video.isConnected || video.ended || !video.paused) continue;
+        try {
+          const result = backgroundPlaybackState.nativePlay.call(video);
+          result?.catch?.(() => {});
+        } catch (_) { }
+      }
+    }
+  }
+
+  function installBackgroundPlaybackGuard() {
+    // Run at document_start so Instagram's own visibility handlers see the
+    // compatibility values before they decide to pause the Reel.
+    try {
+      const hiddenDescriptor = backgroundPlaybackState.hiddenDescriptor;
+      if (hiddenDescriptor?.configurable && hiddenDescriptor.get) {
+        Object.defineProperty(Document.prototype, 'hidden', {
+          configurable: true,
+          enumerable: hiddenDescriptor.enumerable,
+          get() {
+            return backgroundPlaybackEnabled() && backgroundPlaybackState.hidden
+              ? false
+              : hiddenDescriptor.get.call(this);
+          },
+        });
+      }
+    } catch (_) { }
+
+    try {
+      const visibilityDescriptor = backgroundPlaybackState.visibilityDescriptor;
+      if (visibilityDescriptor?.configurable && visibilityDescriptor.get) {
+        Object.defineProperty(Document.prototype, 'visibilityState', {
+          configurable: true,
+          enumerable: visibilityDescriptor.enumerable,
+          get() {
+            return backgroundPlaybackEnabled() && backgroundPlaybackState.hidden
+              ? 'visible'
+              : visibilityDescriptor.get.call(this);
+          },
+        });
+      }
+    } catch (_) { }
+
+    try {
+      const nativePause = backgroundPlaybackState.nativePause;
+      HTMLMediaElement.prototype.pause = function (...args) {
+        if (this instanceof HTMLVideoElement
+          && backgroundPlaybackEnabled()
+          && backgroundPlaybackState.hidden
+          && backgroundPlaybackState.protectedVideos.has(this)) {
+          return;
+        }
+        return nativePause.apply(this, args);
+      };
+    } catch (_) { }
+
+    document.addEventListener('visibilitychange', () => {
+      backgroundPlaybackState.hidden = actualDocumentIsHidden();
+      if (backgroundPlaybackState.hidden) {
+        protectCurrentReelPlayback();
+      } else {
+        releaseBackgroundPlayback({ resume: true });
+      }
+    }, true);
+
+    backgroundPlaybackState.hidden = actualDocumentIsHidden();
+    if (backgroundPlaybackState.hidden) queueMicrotask(protectCurrentReelPlayback);
+  }
+
+  function syncBackgroundPlaybackSetting() {
+    if (!backgroundPlaybackEnabled()) {
+      releaseBackgroundPlayback({ pause: backgroundPlaybackState.hidden });
+      return;
+    }
+    backgroundPlaybackState.hidden = actualDocumentIsHidden();
+    if (backgroundPlaybackState.hidden) protectCurrentReelPlayback();
+  }
+
+  installBackgroundPlaybackGuard();
 
   const hooked = new WeakSet();
   const ownWrite = new WeakMap();
@@ -1532,6 +1664,7 @@
 
   function onSettingsChanged() {
     if (!started) return;
+    syncBackgroundPlaybackSetting();
     if (!SET.enabled) {
       activate(null);
       showAds();
@@ -1698,7 +1831,7 @@
 
     document.dispatchEvent(new CustomEvent('igx:hello'));
     scan();
-    console.info('[Reels Enhancer 4.2] Ready. Press ? on a reel to see the shortcuts.');
+    console.info('[Reels Enhancer 4.3] Ready. Press ? on a reel to see the shortcuts.');
   }
 
   document.dispatchEvent(new CustomEvent('igx:hello'));

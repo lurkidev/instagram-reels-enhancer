@@ -3,7 +3,7 @@
   <h1>Reels Enhancer for Instagram</h1>
   <p><strong>Makes watching Instagram Reels on a computer nicer: simple player controls, keyboard shortcuts, and fewer ads.</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/BUILD-4.2.0-2ea44f?style=for-the-badge" alt="Build 4.2.0">
+    <img src="https://img.shields.io/badge/BUILD-4.3.0-2ea44f?style=for-the-badge" alt="Build 4.3.0">
     <img src="https://img.shields.io/badge/MANIFEST-V3-blue?style=for-the-badge" alt="Manifest V3">
     <img src="https://img.shields.io/badge/CHROME-111%2B-orange?style=for-the-badge" alt="Chrome 111 or later">
     <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-green?style=for-the-badge" alt="MIT License"></a>
@@ -97,7 +97,7 @@ The supplied Manifest V3 configuration declares:
 - `storage` permission for extension settings and counters.
 - Host access to `https://www.instagram.com/*` and `https://instagram.com/*` so the extension can operate on Instagram.
 
-In the supplied 4.2.0 source:
+In the supplied 4.3.0 source:
 
 - Extension settings are stored with `chrome.storage.sync`.
 - Skipped-ad totals are stored with `chrome.storage.local`.
@@ -123,7 +123,7 @@ This project is licensed under the **MIT License**. You may use, copy, modify, m
 When reporting an issue, include:
 
 - Browser name and version.
-- The extension version (**4.2.0** for this package).
+- The extension version (**4.3.0** for this package).
 - The steps needed to reproduce the problem.
 - What you expected to happen and what happened instead.
 

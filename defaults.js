@@ -8,6 +8,7 @@ var IGX_DEFAULTS = Object.freeze({
   seekStep: 5,
   smoothWheel: true,
   autoAdvance: false,
+  backgroundPlayback: true,
   adBlock: true,
   forceH264: true,
   loadingNotices: true,
