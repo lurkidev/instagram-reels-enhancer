@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Reels Enhancer for Instagram",
   "short_name": "Reels Enhancer",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "description": "Makes watching Instagram Reels on a computer nicer: simple player controls, keyboard shortcuts, and fewer ads.",
   "minimum_chrome_version": "111",
   "icons": {

@@ -20,7 +20,7 @@
   const AUDIO_LABEL = /\baudio\b|\bmute|unmute|sonido|silenci/i;
   const NAV_NEXT = /\bnext\b|siguiente|pr[oó]xim|navigate down|abajo/i;
   const NAV_PREV = /\bprev(?:ious)?\b|anterior|navigate up|arriba/i;
-  const AD_LABEL = /^(?:ad|ads|anuncio|publicidad|patrocinad[oa]|sponsored|promocionad[oa])$/i;
+  const AD_LABEL = /^(?:ad|ads|advertisement|sponsored(?:\s+(?:by|content)\b.*)?|paid\s+partnership(?:\s+with\b.*)?|promoted(?:\s+post)?|anuncio|publicidad|contenido\s+patrocinado|patrocinad[oa](?:\s+por\b.*)?|colaboraci[oó]n\s+pagada|promocionad[oa])(?:\s*[·•|:]\s*.*)?$/i;
 
   const now = () => performance.now();
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -122,6 +122,10 @@
       hH264: 'Force H.264 video (after reload)',
       hWheel: 'Wheel: one reel per scroll',
       hHelp: 'Show / hide this help',
+      hFullscreen: 'Enter / exit fullscreen',
+      enterFullscreen: 'Enter fullscreen',
+      exitFullscreen: 'Exit fullscreen',
+      fullscreenUnavailable: 'Fullscreen is not available in this browser',
       hHold: 'Press and hold on a reel to watch it at {n}×.',
       soundOn: 'Sound on',
       soundOff: 'Sound off',
@@ -167,6 +171,12 @@
       hH264: 'Forzar video H.264 (al recargar)',
       hWheel: 'Rueda: un Reel por gesto',
       hHelp: 'Mostrar / ocultar esta ayuda',
+      hFullscreen: 'Entrar / salir de pantalla completa',
+      enterFullscreen: 'Entrar en pantalla completa',
+      exitFullscreen: 'Salir de pantalla completa',
+      enterFullscreen: 'Entrar en pantalla completa',
+      exitFullscreen: 'Salir de pantalla completa',
+      fullscreenUnavailable: 'La pantalla completa no está disponible en este navegador',
       hHold: 'Mantené presionado el clic sobre el Reel para verlo a {n}×.',
       soundOn: 'Sonido activado',
       soundOff: 'Sonido desactivado',
@@ -286,6 +296,10 @@
   const S = {
     video: null,
     host: null,
+    fullscreenTarget: null,
+    fullscreenStage: null,
+    fullscreenScrollTop: 0,
+    fullscreenScrollLeft: 0,
     root: null,
     el: {},
     activatedAt: 0,
@@ -457,6 +471,8 @@
     ff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5v11l8-5.5zM12.5 6.5v11l8-5.5z" fill="currentColor"/></svg>',
     up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 15 12 8.5 18.5 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 9 12 15.5 18.5 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    exitFullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5H3m13-5v5h5M3 16h5v5m8 0v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
 
   function injectStyles() {
@@ -466,16 +482,18 @@
     style.textContent = `
       .igx-host { --igx-surface: rgba(38, 38, 38, .86); }
       .igx-root {
-        position: absolute; inset: 0; z-index: 10; pointer-events: none;
+        position: absolute; inset: 0; z-index: 1; pointer-events: none;
+        --igx-video-left: 12px; --igx-video-right: 12px; --igx-video-top: 12px; --igx-video-bottom: 12px; --igx-video-mid-y: 50%;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         color: #fff; -webkit-font-smoothing: antialiased;
         user-select: none; -webkit-user-select: none;
       }
       .igx-root *, .igx-root *::before, .igx-root *::after { box-sizing: border-box; }
+      .igx-root { pointer-events: none !important; }
       .igx-root svg { display: block; width: 100%; height: 100%; }
 
       .igx-top {
-        position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 8px;
+        position: absolute; top: var(--igx-video-top); left: var(--igx-video-left); display: flex; align-items: center; gap: 8px;
         opacity: 0; transform: translateY(-4px); pointer-events: none;
         transition: opacity .2s ease, transform .2s ease;
       }
@@ -483,6 +501,9 @@
       .igx-root.igx-busy .igx-top, .igx-top:focus-within {
         opacity: 1; transform: none; pointer-events: auto;
       }
+      .igx-root[data-top-pos="top-right"] .igx-top { left: auto; right: var(--igx-video-right); }
+      .igx-root[data-top-pos="bottom-left"] .igx-top { top: auto; bottom: var(--igx-video-bottom); }
+      .igx-root[data-top-pos="bottom-right"] .igx-top { top: auto; bottom: var(--igx-video-bottom); left: auto; right: var(--igx-video-right); }
       .igx-vol {
         display: flex; align-items: center; height: 32px; border-radius: 16px;
         background: var(--igx-surface);
@@ -492,6 +513,9 @@
         border-radius: 50%; cursor: pointer; color: #fff; flex: none;
       }
       .igx-btn svg { width: 16px; height: 16px; }
+      .igx-fs { background: var(--igx-surface); box-shadow: 0 1px 5px rgba(0,0,0,.16); opacity: .88; transition: opacity .15s ease, background .15s ease; }
+      .igx-fs:hover { opacity: 1; background: rgba(60,60,60,.96); }
+      .igx-fs[hidden] { display: none !important; }
       .igx-vslider {
         width: 0; height: 32px; display: flex; align-items: center; overflow: hidden; cursor: pointer;
         touch-action: none; outline: none; transition: width .2s ease, padding .2s ease;
@@ -521,10 +545,12 @@
       .igx-ad-skip { opacity: 0 !important; }
       .igx-native-hidden { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
       .igx-nav {
-        position: absolute; top: 50%; right: 12px; display: flex; flex-direction: column; gap: 10px;
+        position: absolute; top: var(--igx-video-mid-y); right: var(--igx-video-right); display: flex; flex-direction: column; gap: 10px;
         opacity: 0; transform: translate(6px, -50%); pointer-events: none;
         transition: opacity .2s ease, transform .2s ease;
       }
+      .igx-root[data-nav-side="left"] .igx-nav { right: auto; left: var(--igx-nav-left-x, var(--igx-video-left)); }
+      .igx-root[data-nav-side="right"] .igx-nav { left: auto; right: var(--igx-nav-right-x, var(--igx-video-right)); }
       .igx-host:hover .igx-nav, .igx-nav:focus-within {
         opacity: 1; transform: translate(0, -50%); pointer-events: auto;
       }
@@ -637,6 +663,27 @@
       }
       .igx-help p { margin: 14px 0 0; font-size: 12px; color: #a8a8a8; text-align: center; }
 
+      /* Fullscreen must not rebuild Instagram's layout. The body is the
+         fullscreen element so native portals (comments, share sheets and
+         dialogs) remain in the same top layer. Leave every Instagram scroller,
+         card, video and action rail at its native dimensions and position. */
+      body:fullscreen, body:-webkit-full-screen {
+        background: #000 !important;
+      }
+      /* Keep our overlay below Instagram's native action/caption layers. Its
+         own controls remain interactive because only the actual controls opt
+         into pointer events; the overlay root itself is pointer-transparent. */
+      body:fullscreen .igx-root.igx-fullscreen-active,
+      body:-webkit-full-screen .igx-root.igx-fullscreen-active { z-index: 1 !important; }
+      /* Instagram supplies the native scroll buttons. Hide our duplicate pair
+         only while fullscreen is active; keyboard and native wheel remain. */
+      body:fullscreen .igx-root.igx-fullscreen-active .igx-nav,
+      body:-webkit-full-screen .igx-root.igx-fullscreen-active .igx-nav { display: none !important; }
+      /* Native portals can be mounted as siblings of the feed under body. */
+      body:fullscreen [role="dialog"], body:-webkit-full-screen [role="dialog"],
+      body:fullscreen [aria-modal="true"], body:-webkit-full-screen [aria-modal="true"] {
+        z-index: 2147483500 !important; pointer-events: auto !important;
+      }
       @media (prefers-reduced-motion: reduce) {
         .igx-root, .igx-root * { transition: none !important; }
       }
@@ -659,6 +706,7 @@
           </div>
         </div>
         <button class="igx-chip igx-rate" type="button" data-t-title="resetSpeed" hidden></button>
+        <button class="igx-btn igx-fs" type="button" data-t-aria="enterFullscreen" data-t-title="enterFullscreen">${ICON.fullscreen}</button>
       </div>
       <div class="igx-nav" role="group" data-t-aria="navGroup">
         <button class="igx-navbtn igx-prev" type="button" data-t-aria="prevReel" data-t-title="prevReelKey">${ICON.up}</button>
@@ -688,6 +736,7 @@
             <dt><kbd>B</kbd></dt><dd data-t="hAds"></dd>
             <dt><kbd>H</kbd></dt><dd data-t="hH264"></dd>
             <dt><kbd>W</kbd></dt><dd data-t="hWheel"></dd>
+            <dt><kbd>F</kbd></dt><dd data-t="hFullscreen"></dd>
             <dt><kbd>?</kbd></dt><dd data-t="hHelp"></dd>
           </dl>
           <p class="igx-h-hold"></p>
@@ -702,6 +751,7 @@
       vslider: q('.igx-vslider'),
       vol: q('.igx-vol'),
       rate: q('.igx-rate'),
+      fullscreen: q('.igx-fs'),
       toast: q('.igx-toast'),
       seek: q('.igx-seek'),
       tip: q('.igx-tip'),
@@ -716,6 +766,7 @@
 
     S.el.mute.addEventListener('click', () => setMuted(!(S.video?.muted)));
     S.el.rate.addEventListener('click', () => setRate(1, true));
+    S.el.fullscreen.addEventListener('click', () => toggleFullscreen());
     q('.igx-prev').addEventListener('click', () => navigate(-1));
     q('.igx-next').addEventListener('click', () => navigate(1));
     S.el.help.addEventListener('click', e => {
@@ -1015,6 +1066,10 @@
   let lastNativeNavScan = 0;
   function hideNativeNav(video) {
     if (!SET.navArrows) return;
+    if (fullscreenActive()) {
+      showNativeNav();
+      return;
+    }
     if (!video || now() - lastNativeNavScan < 2000) return;
     lastNativeNavScan = now();
     const vr = video.getBoundingClientRect();
@@ -1062,8 +1117,9 @@
   function neighborItem(dir) {
     let sib = S.item && (dir > 0 ? S.item.nextElementSibling : S.item.previousElementSibling);
     let skippedAd = false;
-    while (sib && isAdItem(sib)) {
-      skippedAd = true;
+    while (sib && (isAdItem(sib) || (fullscreenActive() && (isSkeleton(sib)
+      || (sib.querySelector('video') && !hasRenderableReel(sib) && !sib.textContent.trim()))))) {
+      if (isAdItem(sib)) skippedAd = true;
       sib = dir > 0 ? sib.nextElementSibling : sib.previousElementSibling;
     }
     return { sib, skippedAd };
@@ -1142,6 +1198,15 @@
     S.root.classList.toggle('igx-next-loading', show);
   }
 
+  function scrollFullscreenToItem(item) {
+    const stage = S.fullscreenStage;
+    if (!item?.isConnected || (stage && !stage.contains(item))) return false;
+    // scrollIntoView follows Instagram's own nested scroll chain. Do not assume
+    // that a Reel card is a direct child of a synthetic fullscreen list.
+    item.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
+    return true;
+  }
+
   function doNavigate(dir) {
     const v = S.video;
     if (!v) return;
@@ -1152,9 +1217,14 @@
     if (sib && skippedAd) {
       for (let x = dir > 0 ? S.item?.nextElementSibling : S.item?.previousElementSibling; x && x !== sib;
         x = dir > 0 ? x.nextElementSibling : x.previousElementSibling) reportAd(x);
+      if (fullscreenActive() && scrollFullscreenToItem(sib)) return;
       sib.scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
+
+    // In fullscreen, move the fullscreen list itself before trying Instagram's
+    // out-of-stage native controls. This keeps navigation inside the top layer.
+    if (fullscreenActive() && S.fullscreenTarget !== S.host && sib && scrollFullscreenToItem(sib)) return;
 
     const native = findNativeNavButton(v, dir);
     if (native) {
@@ -1180,15 +1250,30 @@
   }
 
   function onWheel(e) {
+    // Instagram owns wheel navigation in fullscreen. Intercepting the wheel
+    // here can double-advance, block nested controls, or desync the active Reel.
+    if (fullscreenActive()) return;
     if (!SET.enabled || !SET.smoothWheel || !S.video || e.ctrlKey || !isReels()) return;
     if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
     const t = e.target instanceof Element ? e.target : null;
+    if (!t) return;
+
+    const inFullscreenStage = fullscreenActive() && S.fullscreenStage?.contains(t);
+    // Let the browser scroll the actual fullscreen Reel list. Do not hijack wheel
+    // events on comments/dialogs, which live elsewhere under the fullscreen body.
+    if (inFullscreenStage) return;
     const scroller = S.scroller;
-    if (!t || !scroller || !(scroller === document.scrollingElement || scroller.contains(t))) return;
+    if (!inFullscreenStage && (!scroller || !(scroller === document.scrollingElement || scroller.contains(t)))) return;
+
+    // Let users operate our controls and any genuine nested Instagram scroller.
+    if (t.closest('.igx-root button, .igx-root [role="slider"], .igx-root .igx-seek')) return;
     const dialog = t.closest('[role="dialog"]');
     if (dialog && !dialog.contains(S.video)) return;
-    for (let n = t; n && n !== scroller && n !== document.body; n = n.parentElement) {
-      if (n.scrollHeight > n.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return;
+    const stopAt = inFullscreenStage ? S.fullscreenStage : scroller;
+    if (!inFullscreenStage) {
+      for (let n = t; n && n !== stopAt && n !== document.body; n = n.parentElement) {
+        if (n.scrollHeight > n.clientHeight + 4 && /(auto|scroll|overlay)/.test(getComputedStyle(n).overflowY)) return;
+      }
     }
 
     e.preventDefault();
@@ -1229,6 +1314,9 @@
   }
 
   function chooseActive() {
+    if (fullscreenActive() && S.video?.isConnected && now() < (S.fullscreenEntryLockUntil || 0)) {
+      return S.fullscreenAnchorVideo?.isConnected ? S.fullscreenAnchorVideo : S.video;
+    }
     let best = null;
     let bestScore = 0;
     let currentScore = 0;
@@ -1278,18 +1366,45 @@
   let lastAdScan = 0;
   let adLabels = [];
   const adAnnounced = new WeakSet();
+  const confirmedAdItems = new WeakSet();
+
+  function normalizedAdText(value) {
+    return String(value || '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/[\s\u00A0]+/g, ' ').trim();
+  }
 
   function isAdLabel(el) {
-    if (el.childElementCount > 0) return false;
-    const text = el.textContent.trim();
-    if (!text || text.length > 14 || !AD_LABEL.test(text)) return false;
+    if (!(el instanceof Element) || el.closest('.igx-root')) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8 || rect.width > 320 || rect.height > 88) return false;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) < 0.06) return false;
+
+    const candidates = [
+      el.getAttribute('aria-label'),
+      el.getAttribute('title'),
+      el.innerText,
+      el.textContent,
+    ].map(normalizedAdText).filter(Boolean);
+    if (!candidates.length) return false;
+    if (!candidates.some(text => text.length <= 72 && AD_LABEL.test(text))) return false;
+
     const link = el.closest('a[href]');
-    if (link && /^\/[\w.]+\/?$/.test(link.getAttribute('href') || '')) return false;
+    if (link && /^\/[\w.]+\/?$/.test(link.getAttribute('href') || '')
+      && !/sponsor|ad|promo/i.test(candidates.join(' '))) return false;
     return true;
   }
 
   function findAdLabels(scope = document) {
-    return Array.from(scope.querySelectorAll('span, a, div')).filter(isAdLabel);
+    const candidates = Array.from(scope.querySelectorAll('span, a, div, [aria-label], [title], [data-testid]'))
+      .filter(isAdLabel)
+      .sort((a, b) => area(a) - area(b));
+    // Prefer the smallest visible label node so its surrounding Reel card can be found reliably.
+    const result = [];
+    for (const node of candidates) {
+      if (!result.some(child => node.contains(child))) result.push(node);
+    }
+    return result;
   }
 
   function isScroller(el) {
@@ -1297,15 +1412,33 @@
   }
 
   function findReelItem(label) {
+    if (!label?.isConnected) return null;
+    const roots = [S.fullscreenStage, S.list].filter((root, index, all) =>
+      root?.isConnected && root.contains(label) && all.indexOf(root) === index
+    );
+    for (const root of roots) {
+      for (const child of Array.from(root.children)) {
+        if (!child.contains(label)) continue;
+        const videos = child.querySelectorAll('video');
+        if (videos.length === 1) return child;
+        if (videos.length > 1) {
+          const video = Array.from(videos).find(v => v.getBoundingClientRect().height > 120);
+          if (video) return getReelItem(video) || child;
+        }
+      }
+    }
+
+    // Fallback for Instagram layouts where the label is not inside a direct list slot.
     const h = window.innerHeight;
     let node = label.parentElement;
     while (node && node !== document.body && !node.querySelector('video')) node = node.parentElement;
     if (!node || node === document.body || isScroller(node)) return null;
-    if (node.querySelectorAll('video').length !== 1 || node.getBoundingClientRect().height > h * 1.6) return null;
-
-    for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
-      if (isScroller(p) || p.querySelectorAll('video').length > 1 || p.getBoundingClientRect().height > h * 1.6) break;
-      node = p;
+    const videos = node.querySelectorAll('video');
+    if (videos.length !== 1) return null;
+    for (let parent = node.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      if (isScroller(parent) || parent.querySelectorAll('video').length > 1
+        || parent.getBoundingClientRect().height > h * 1.6) break;
+      node = parent;
     }
     return node;
   }
@@ -1330,11 +1463,13 @@
 
   function scanAds(force = false) {
     if (!SET.enabled || !SET.adBlock) return;
-    if (!force && now() - lastAdScan < (isReels() ? 400 : 1000)) return;
+    if (!force && now() - lastAdScan < (isReels() ? 180 : 1000)) return;
     lastAdScan = now();
 
-    document.querySelectorAll('.igx-ad-hidden, .igx-ad-skip').forEach(item => {
-      if (!findAdLabels(item).length) item.classList.remove('igx-ad-hidden', 'igx-ad-skip');
+    // Do not remove a confirmed Reel ad marker just because Instagram temporarily
+    // re-renders its label node. That was causing ads to flash back into view.
+    document.querySelectorAll('.igx-ad-hidden').forEach(item => {
+      if (!confirmedAdItems.has(item) && !findAdLabels(item).length) item.classList.remove('igx-ad-hidden');
     });
 
     if (isReels()) {
@@ -1353,6 +1488,7 @@
       if (!isReels()) continue;
       const item = findReelItem(label);
       if (item) {
+        confirmedAdItems.add(item);
         item.classList.add('igx-ad-skip');
         item.querySelectorAll('video').forEach(silence);
       }
@@ -1429,6 +1565,219 @@
     }
   }
 
+  function fullscreenActive() {
+    return !!(S.fullscreenTarget && document.fullscreenElement === S.fullscreenTarget)
+      || !!(S.host && document.fullscreenElement === S.host);
+  }
+
+  function getFullscreenStage() {
+    // Use Instagram's actual scroll container. If the feed scrolls the document,
+    // retain the document scroller instead of manufacturing a new list viewport.
+    const item = S.item;
+    if (!item?.isConnected) return document.scrollingElement || document.documentElement;
+    const candidates = [S.scroller, findScroller(S.video), document.scrollingElement, document.documentElement]
+      .filter((node, index, all) => node?.isConnected && node.contains(item) && all.indexOf(node) === index);
+    return candidates.find(node => node === document.scrollingElement || node === document.documentElement || isScroller(node))
+      || candidates[0]
+      || document.scrollingElement
+      || document.documentElement;
+  }
+
+  function getFullscreenTarget() {
+    // Fullscreen the body rather than the Reel list itself. Instagram frequently
+    // mounts comments in a body-level portal; a list-only fullscreen clips it out.
+    return document.body?.requestFullscreen ? document.body : null;
+  }
+
+  function fullscreenDirectChild(stage, node) {
+    if (!stage || !node || !stage.contains(node)) return null;
+    let current = node;
+    while (current && current.parentElement !== stage) current = current.parentElement;
+    return current?.parentElement === stage ? current : null;
+  }
+
+  function hasRenderableReel(slot) {
+    if (!slot) return false;
+    const videos = Array.from(slot.querySelectorAll('video'));
+    if (!videos.length) return false;
+    return videos.some(video => video.videoWidth > 0 && video.videoHeight > 0
+      && video.readyState >= HTMLMediaElement.HAVE_METADATA);
+  }
+
+  function restoreFullscreenAnchor() {
+    const stage = S.fullscreenStage;
+    const item = S.fullscreenAnchorItem || S.item;
+    if (!stage || document.fullscreenElement !== S.fullscreenTarget || !item?.isConnected || !stage.contains(item)) return false;
+    // Preserve the native feed's exact offset instead of scrolling to a synthetic
+    // full-screen slot. The active Reel stays where the user entered fullscreen.
+    try {
+      stage.scrollTo({ top: S.fullscreenScrollTop, left: S.fullscreenScrollLeft, behavior: 'instant' });
+    } catch (_) {
+      stage.scrollTop = S.fullscreenScrollTop;
+      stage.scrollLeft = S.fullscreenScrollLeft;
+    }
+    return true;
+  }
+
+  function clearFullscreenStageClasses() {
+    const stage = S.fullscreenStage;
+    if (stage) stage.classList.remove('igx-fullscreen-list');
+    S.fullscreenStage = null;
+    S.root?.classList.remove('igx-fullscreen-active');
+  }
+
+  function syncFullscreenStageClasses() {
+    const stage = S.fullscreenStage;
+    // Never rewrite Instagram's Reel-card, media, caption, creator, or action
+    // control layout. Only the original scroll container gets a fullscreen class.
+    if (!stage || document.fullscreenElement !== S.fullscreenTarget || !stage.isConnected) return;
+  }
+
+  function syncFullscreenUi() {
+    if (!S.root || !S.el.fullscreen) return;
+    const active = fullscreenActive();
+    S.root.classList.toggle('igx-fullscreen-active', active);
+    // Instagram's native side navigation remains available in fullscreen.
+    // Hide the extension's duplicate scroll buttons but retain keyboard support.
+    S.root.toggleAttribute('data-no-nav', !SET.navArrows || active);
+    S.el.fullscreen.innerHTML = active ? ICON.exitFullscreen : ICON.fullscreen;
+    S.el.fullscreen.setAttribute('aria-label', tr(active ? 'exitFullscreen' : 'enterFullscreen'));
+    S.el.fullscreen.title = tr(active ? 'exitFullscreen' : 'enterFullscreen');
+  }
+
+  async function toggleFullscreen() {
+    const host = S.host;
+    if (!host || !S.video || !S.video.isConnected) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      const target = getFullscreenTarget();
+      const stage = getFullscreenStage();
+      if (!target || !stage || typeof target.requestFullscreen !== 'function') {
+        toast(tr('fullscreenUnavailable'));
+        return;
+      }
+
+      // Preserve the currently playing Reel while the body-level fullscreen root
+      // keeps Instagram's comment portal and dialogs available to the user.
+      S.fullscreenAnchorItem = S.item;
+      S.fullscreenAnchorVideo = S.video;
+      S.fullscreenScrollTop = stage.scrollTop;
+      S.fullscreenScrollLeft = stage.scrollLeft;
+      S.fullscreenEntryLockUntil = now() + 900;
+      S.fullscreenTarget = target;
+      S.fullscreenStage = stage;
+      stage.classList.add('igx-fullscreen-list');
+      try { await target.requestFullscreen({ navigationUI: 'hide' }); }
+      catch (_) { await target.requestFullscreen(); }
+      syncFullscreenStageClasses();
+      requestAnimationFrame(() => {
+        restoreFullscreenAnchor();
+        requestAnimationFrame(() => restoreFullscreenAnchor());
+      });
+    } catch (_) {
+      clearFullscreenStageClasses();
+      S.fullscreenTarget = null;
+      toast(tr('fullscreenUnavailable'));
+    }
+  }
+
+  function rectOverlap(a, b) {
+    const w = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+    const h = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    return w * h;
+  }
+
+  function getRenderedVideoRect(video, boxRect) {
+    if (!fullscreenActive() || !video.videoWidth || !video.videoHeight) return boxRect;
+    const scale = Math.min(boxRect.width / video.videoWidth, boxRect.height / video.videoHeight);
+    const width = video.videoWidth * scale;
+    const height = video.videoHeight * scale;
+    return {
+      left: boxRect.left + (boxRect.width - width) / 2,
+      top: boxRect.top + (boxRect.height - height) / 2,
+      right: boxRect.left + (boxRect.width + width) / 2,
+      bottom: boxRect.top + (boxRect.height + height) / 2,
+      width, height
+    };
+  }
+
+  let lastPlacementAt = 0;
+  function updateOverlayPlacement(force = false) {
+    if (!S.root || !S.video?.isConnected || !S.host?.isConnected) return;
+    const stamp = now();
+    if (!force && stamp - lastPlacementAt < 550) return;
+    lastPlacementAt = stamp;
+
+    const hr = S.host.getBoundingClientRect();
+    const videoBox = S.video.getBoundingClientRect();
+    const vr = getRenderedVideoRect(S.video, videoBox);
+    if (vr.width < 80 || vr.height < 100 || hr.width < 80 || hr.height < 100) return;
+
+    const left = clamp(vr.left - hr.left, 0, hr.width - 1);
+    const right = clamp(hr.right - vr.right, 0, hr.width - 1);
+    const top = clamp(vr.top - hr.top, 0, hr.height - 1);
+    const bottom = clamp(hr.bottom - vr.bottom, 0, hr.height - 1);
+    const midY = clamp(vr.top - hr.top + vr.height / 2, 40, hr.height - 40);
+    S.root.style.setProperty('--igx-video-left', `${left + 10}px`);
+    S.root.style.setProperty('--igx-video-right', `${right + 10}px`);
+    S.root.style.setProperty('--igx-video-top', `${top + 10}px`);
+    S.root.style.setProperty('--igx-video-bottom', `${bottom + 34}px`);
+    S.root.style.setProperty('--igx-video-mid-y', `${midY}px`);
+
+    // In fullscreen inspect the whole Reel card, not just the video wrapper,
+    // so the overlay can avoid Instagram's native action/scroll controls.
+    const obstacles = [];
+    const obstacleScope = fullscreenActive() && S.item?.isConnected ? S.item : S.host;
+    const candidates = obstacleScope.querySelectorAll('button, a[href], [role="button"], [aria-label], [data-testid], [dir="auto"], p');
+    const seen = new Set();
+    for (const node of candidates) {
+      if (node === S.root || S.root.contains(node) || seen.has(node)) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 12 || r.height < 12 || r.width * r.height > vr.width * vr.height * 0.16) continue;
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) < 0.08) continue;
+      if (!rectOverlap(r, vr)) continue;
+      obstacles.push(r);
+      seen.add(node);
+    }
+
+    const w = Math.min(210, Math.max(116, vr.width * 0.48));
+    const h = 42;
+    const gap = 10;
+    const positions = {
+      'top-left': { left: vr.left + gap, top: vr.top + gap },
+      'top-right': { left: vr.right - w - gap, top: vr.top + gap },
+      'bottom-left': { left: vr.left + gap, top: vr.bottom - h - gap - 18 },
+      'bottom-right': { left: vr.right - w - gap, top: vr.bottom - h - gap - 18 },
+    };
+    const score = box => obstacles.reduce((sum, r) => sum + rectOverlap(box, r), 0) / Math.max(1, box.width * box.height);
+    let best = 'top-left';
+    let bestScore = Infinity;
+    for (const [name, pos] of Object.entries(positions)) {
+      const box = { ...pos, right: pos.left + w, bottom: pos.top + h, width: w, height: h };
+      const cost = score(box);
+      if (cost < bestScore) { best = name; bestScore = cost; }
+    }
+    S.root.dataset.topPos = best;
+
+    const navBoxHeight = 88;
+    const navY = vr.top + vr.height / 2 - navBoxHeight / 2;
+    const leftSpace = Math.max(0, vr.left - hr.left);
+    const rightSpace = Math.max(0, hr.right - vr.right);
+    const navXLeft = leftSpace >= 56 ? (leftSpace - 40) / 2 : (vr.left - hr.left) + gap;
+    const navXRight = rightSpace >= 56 ? (rightSpace - 40) / 2 : (hr.right - vr.right) + gap;
+    const navLeft = { left: hr.left + navXLeft, top: navY, right: hr.left + navXLeft + 40, bottom: navY + navBoxHeight, width: 40, height: navBoxHeight };
+    const navRight = { left: hr.right - navXRight - 40, top: navY, right: hr.right - navXRight, bottom: navY + navBoxHeight, width: 40, height: navBoxHeight };
+    S.root.style.setProperty('--igx-nav-left-x', `${navXLeft}px`);
+    S.root.style.setProperty('--igx-nav-right-x', `${navXRight}px`);
+    S.root.dataset.navSide = score(navLeft) <= score(navRight) ? 'left' : 'right';
+    syncFullscreenUi();
+  }
+
   function mount() {
     const v = S.video;
     if (!v) return;
@@ -1446,6 +1795,8 @@
     }
     const root = buildRoot();
     if (root.parentElement !== host) host.appendChild(root);
+    syncFullscreenStageClasses();
+    updateOverlayPlacement(true);
   }
 
   function releaseHost() {
@@ -1496,6 +1847,7 @@
     S.item = getReelItem(S.video);
     if (S.item?.parentElement) S.list = S.item.parentElement;
     S.scroller = findScroller(S.video);
+    if (fullscreenActive()) requestAnimationFrame(() => syncFullscreenStageClasses());
     lastNativeNavScan = 0;
     for (const other of document.querySelectorAll('video')) {
       if (other !== S.video && !other.paused && !other.muted) {
@@ -1523,6 +1875,7 @@
     }
     for (const v of document.querySelectorAll('video')) hookVideo(v);
     activate(chooseActive());
+    updateOverlayPlacement();
     hideNativeNav(S.video);
     skipActiveAd();
   }
@@ -1652,7 +2005,7 @@
   function renderSettings() {
     if (!S.root) return;
     S.root.toggleAttribute('data-no-controls', !SET.controls);
-    S.root.toggleAttribute('data-no-nav', !SET.navArrows);
+    S.root.toggleAttribute('data-no-nav', !SET.navArrows || fullscreenActive());
     S.root.querySelector('.igx-badge').innerHTML = `${SET.holdRate}× ${ICON.ff}`;
     applyI18n(S.root);
     S.root.querySelector('.igx-h-seek').textContent = tr('hSeek', { n: SET.seekStep });
@@ -1737,8 +2090,11 @@
 
     if (t && !inOurUI) {
       if (t.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]')) return;
-      const dialog = t.closest('[role="dialog"]');
-      if (dialog && !dialog.contains(S.video)) return;
+      const dialog = t.closest('[role="dialog"], [aria-modal="true"]');
+      if (dialog) return;
+      // Do not steal keyboard navigation from Instagram's focused action,
+      // follow, like, comment, repost, share or close controls.
+      if (t.closest('button, a[href], [role="button"], [role="link"]')) return;
     }
 
     if (inOurUI && t.classList.contains('igx-vslider') && e.key.startsWith('Arrow')) {
@@ -1758,8 +2114,8 @@
     else if (key === 'ArrowRight') seekBy(SET.seekStep);
     else if (key === 'j' || key === 'J') seekBy(-SET.seekStep * 2);
     else if (key === 'l' || key === 'L') seekBy(SET.seekStep * 2);
-    else if (key === 'ArrowUp') navigate(-1);
-    else if (key === 'ArrowDown') navigate(1);
+    else if (key === 'ArrowUp') { if (!e.repeat) navigate(-1); }
+    else if (key === 'ArrowDown') { if (!e.repeat) navigate(1); }
     else if (key === 'm' || key === 'M') { if (!e.repeat) setMuted(!S.video.muted, true); }
     else if (key === '+' || key === '=') setVolume((S.video.muted ? 0 : prefs.volume) + CFG.volumeStep, true);
     else if (key === '-' || key === '_') setVolume((S.video.muted ? 0 : prefs.volume) - CFG.volumeStep, true);
@@ -1790,6 +2146,7 @@
         toast(tr(SET.forceH264 ? 'h264On' : 'h264Off'));
       }
     }
+    else if (key === 'f' || key === 'F') { if (!e.repeat) toggleFullscreen(); }
     else if (key === '?') toggleHelp();
     else handled = false;
 
@@ -1823,7 +2180,21 @@
 
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     window.addEventListener('wheel', onWheel, { capture: true, passive: false });
-    window.addEventListener('resize', queueScan, { passive: true });
+    window.addEventListener('resize', () => { queueScan(); updateOverlayPlacement(true); }, { passive: true });
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && S.fullscreenTarget) {
+        clearFullscreenStageClasses();
+        S.fullscreenTarget = null;
+        S.fullscreenAnchorItem = null;
+        S.fullscreenAnchorVideo = null;
+        S.fullscreenEntryLockUntil = 0;
+      } else {
+        syncFullscreenStageClasses();
+        requestAnimationFrame(() => restoreFullscreenAnchor());
+      }
+      syncFullscreenUi();
+      requestAnimationFrame(() => updateOverlayPlacement(true));
+    });
     window.addEventListener('popstate', queueScan);
     new MutationObserver(queueScan).observe(document.body || document.documentElement, { childList: true, subtree: true });
     setInterval(queueScan, CFG.scanMs);
@@ -1831,7 +2202,7 @@
 
     document.dispatchEvent(new CustomEvent('igx:hello'));
     scan();
-    console.info('[Reels Enhancer 4.3] Ready. Press ? on a reel to see the shortcuts.');
+    console.info('[Reels Enhancer 4.4.0] Ready. Press ? on a reel to see the shortcuts.');
   }
 
   document.dispatchEvent(new CustomEvent('igx:hello'));
