@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Reels Enhancer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <img class="logo" src="icons/icon48.png" alt="" width="32" height="32">
+    <div class="head-text">
+      <h1>Reels Enhancer</h1>
+      <p class="status" id="status"></p>
+    </div>
+    <div class="seg seg-lang" role="group" data-i18n-aria="language" id="lang">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="es">ES</button>
+    </div>
+    <label class="switch switch-lg" data-i18n-title="masterTitle">
+      <input type="checkbox" role="switch" id="enabled" data-i18n-aria="masterTitle">
+      <span class="track"><span class="thumb"></span></span>
+    </label>
+  </header>
+
+  <main id="main">
+    <section class="stats" data-i18n-aria="adsSkipped">
+      <div class="stat"><strong id="stat-tab">0</strong><span data-i18n="statTab"></span></div>
+      <div class="stat"><strong id="stat-today">0</strong><span data-i18n="statToday"></span></div>
+      <div class="stat"><strong id="stat-total">0</strong><span data-i18n="statTotal"></span></div>
+    </section>
+
+    <div id="groups"></div>
+
+    <div class="banner" id="reload-banner" hidden>
+      <span data-i18n="reloadBanner"></span>
+      <button type="button" class="btn btn-primary" data-action="reload" data-i18n="reload"></button>
+    </div>
+
+    <details class="shortcuts">
+      <summary data-i18n="shortcuts"></summary>
+      <dl>
+        <dt><kbd data-i18n="space"></kbd> <kbd>K</kbd></dt><dd data-i18n="scPlay"></dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd id="sc-seek"></dd>
+        <dt><kbd>J</kbd> <kbd>L</kbd></dt><dd id="sc-seekbig"></dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd data-i18n="scNav"></dd>
+        <dt><kbd>M</kbd></dt><dd data-i18n="scMute"></dd>
+        <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd data-i18n="scVolume"></dd>
+        <dt><kbd>&lt;</kbd> <kbd>&gt;</kbd></dt><dd data-i18n="scSpeed"></dd>
+        <dt><kbd>0</kbd>–<kbd>9</kbd></dt><dd data-i18n="scJump"></dd>
+        <dt><kbd>A</kbd> <kbd>B</kbd> <kbd>W</kbd> <kbd>H</kbd></dt><dd data-i18n="scToggles"></dd>
+        <dt><kbd>?</kbd></dt><dd data-i18n="scHelp"></dd>
+        <dt id="sc-global-keys"><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>R</kbd></dt><dd data-i18n="scGlobal"></dd>
+      </dl>
+      <button type="button" class="link" data-action="shortcuts" data-i18n="changeShortcut"></button>
+    </details>
+  </main>
+
+  <footer class="foot">
+    <button type="button" class="btn" data-action="open" data-i18n="openReels"></button>
+    <button type="button" class="btn" data-action="reload" data-i18n="reloadInstagram"></button>
+    <button type="button" class="btn btn-ghost" data-action="reset" id="reset" data-i18n="reset"></button>
+  </footer>
+  <p class="version" id="version"></p>
+
+  <script src="defaults.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
